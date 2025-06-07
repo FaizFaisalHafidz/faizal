@@ -470,13 +470,6 @@ class ProjectController extends Controller
                     'warna_display' => '#236D8A'
                 ],
                 [
-                    'nama_task' => 'Base Coat',
-                    'deskripsi_task' => 'Aplikasi cat dasar sebelum color coat',
-                    'kategori_task' => 'base_coat',
-                    'durasi_hari' => 1,
-                    'warna_display' => '#E9742B'
-                ],
-                [
                     'nama_task' => 'Color Coat',
                     'deskripsi_task' => 'Aplikasi cat warna utama',
                     'kategori_task' => 'color_coat',

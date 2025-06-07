@@ -252,7 +252,7 @@ class ProgressProjectController extends Controller
     /**
      * Remove the specified task
      */
-    public function destroy(DataProject $project, ProgressProject $task): JsonResponse
+    public function destroy(DataProject $project, ProgressProject $task)
     {
         // Ensure task belongs to project
         if ($task->project_id !== $project->id) {
@@ -279,10 +279,7 @@ class ProgressProjectController extends Controller
 
             DB::commit();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Task berhasil dihapus'
-            ]);
+           return redirect()->back()->with('success', 'Task berhasil dihapus');
 
         } catch (\Exception $e) {
             DB::rollback();
