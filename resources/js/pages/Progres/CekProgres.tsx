@@ -5,7 +5,7 @@ import Footer from '@/components/Footer';
 import Header from '@/components/Header';
 import { motion } from 'framer-motion';
 
-// Interface untuk data kendaraan
+// Update interface KendaraanData
 interface KendaraanData {
     platNomor: string;
     namaPemilik: string;
@@ -16,14 +16,48 @@ interface KendaraanData {
     layanan: string;
     tanggalMasuk: string;
     estimasiSelesai: string;
+    tanggalSelesaiAktual?: string;
     status: 'bongkar-body' | 'repair-body' | 'pengampelasan' | 'poxy' | 'repaint-clear' | 'pemasangan-body';
     statusDetail: string;
+    currentStep: number;
+    progressSteps: Array<{
+        id: number;
+        step: number;
+        nama: string;
+        kategori: string;
+        status: string;
+        progress: number;
+        durasi: number;
+        warna: string;
+        isCritical: boolean;
+        tanggalMulai?: string;
+        tanggalSelesai?: string;
+        estimasiSelesai?: string;
+        pic?: string;
+        catatan?: string;
+        qualityStatus: string;
+    }>;
     catatan?: string;
+    catatanInternal?: string;
     harga: number;
     pembayaran: {
         status: 'belum' | 'sebagian' | 'lunas';
         dibayar: number;
+        sisa: number;
     };
+    projectStats: {
+        totalTasks: number;
+        completedTasks: number;
+        inProgressTasks: number;
+        progressPercentage: number;
+        daysRemaining: number;
+        isOverdue: boolean;
+        statusProject: string;
+    };
+    lastUpdate: string;
+    projectCode: string;
+    noTelp: string;
+    email: string;
 }
 
 export default function CekProgres() {
@@ -32,6 +66,12 @@ export default function CekProgres() {
     const [error, setError] = useState<string | null>(null);
     const [kendaraanData, setKendaraanData] = useState<KendaraanData | null>(null);
     const [isSubmitted, setIsSubmitted] = useState(false);
+
+    // Fungsi untuk mendapatkan CSRF token
+    const getCSRFToken = () => {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        return meta ? meta.getAttribute('content') : '';
+    };
 
     // Fungsi untuk menangani submit form pencarian
     const handleSubmit = async (e: React.FormEvent) => {
@@ -45,83 +85,133 @@ export default function CekProgres() {
         setIsLoading(true);
         setError(null);
 
-        // Di sini nanti akan ada API call ke backend
-        // Untuk demo, kita gunakan dummy data
         try {
-            // Simulasi network delay
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-
-            // Demo data untuk plat nomor apa saja
-            const dummyData: KendaraanData = {
-                platNomor: platNomor.toUpperCase(),
-                namaPemilik: 'Ahmad Supriyadi',
-                jenisKendaraan: 'Sepeda Motor',
-                merkKendaraan: 'Honda',
-                tipeKendaraan: 'CBR 150R',
-                warna: 'Merah (custom metalik)',
-                layanan: 'Custom Paint - Metal Flake',
-                tanggalMasuk: '15 Mei 2025',
-                estimasiSelesai: '25 Mei 2025',
-                status: 'pengampelasan',
-                statusDetail: 'Proses pengampelasan permukaan body',
-                catatan: 'Clear coat tambahan untuk perlindungan extra',
-                harga: 2500000,
-                pembayaran: {
-                    status: 'sebagian',
-                    dibayar: 1500000,
+            // Gunakan URL langsung karena route helper tidak tersedia di client
+            const response = await fetch('/progress/check', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': getCSRFToken(),
+                    'Accept': 'application/json',
                 },
-            };
+                body: JSON.stringify({
+                    plat_nomor: platNomor.trim()
+                })
+            });
 
-            setKendaraanData(dummyData);
-            setIsSubmitted(true);
+            // Check if response is JSON
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                throw new Error('Server tidak mengembalikan response JSON yang valid');
+            }
+
+            const result = await response.json();
+
+            if (response.ok && result.success) {
+                setKendaraanData(result.data);
+                setIsSubmitted(true);
+                setError(null);
+            } else {
+                // Handle both HTTP errors and application errors
+                const errorMessage = result.message || 
+                    (response.status === 404 ? 'Kendaraan tidak ditemukan' : 'Terjadi kesalahan pada server');
+                setError(errorMessage);
+                setKendaraanData(null);
+                setIsSubmitted(false);
+            }
         } catch (err) {
-            setError('Terjadi kesalahan saat mencari data. Mohon coba lagi.');
+            console.error('Error checking progress:', err);
+            
+            // More specific error messages
+            if (err instanceof TypeError && err.message.includes('fetch')) {
+                setError('Tidak dapat menghubungi server. Periksa koneksi internet Anda.');
+            } else if (err instanceof Error) {
+                setError(err.message);
+            } else {
+                setError('Terjadi kesalahan yang tidak diketahui. Mohon coba lagi.');
+            }
+            
+            setKendaraanData(null);
+            setIsSubmitted(false);
         } finally {
             setIsLoading(false);
         }
     };
 
-    // Fungsi untuk menentukan label dan CSS class berdasarkan status
-    const getStatusInfo = (status: KendaraanData['status']) => {
+    // Update fungsi getCurrentStep untuk menggunakan data dari API
+    const getCurrentStep = (kendaraanData: KendaraanData) => {
+        // Gunakan currentStep dari API, tapi validasi dengan progressSteps
+        const apiCurrentStep = kendaraanData.currentStep;
+        const steps = kendaraanData.progressSteps;
+        
+        // Hitung berdasarkan status task yang sebenarnya
+        const completedTasks = steps.filter(step => step.status === 'completed').length;
+        const inProgressTasks = steps.filter(step => step.status === 'in_progress');
+        
+        if (inProgressTasks.length > 0) {
+            // Jika ada task in progress, return step task tersebut
+            return inProgressTasks[0].step;
+        }
+        
+        if (completedTasks === steps.length && steps.length > 0) {
+            // Jika semua completed, return step terakhir
+            return steps.length;
+        }
+        
+        // Return step berikutnya setelah completed tasks
+        return Math.min(completedTasks + 1, 6); // Max 6 untuk tampilan chevron
+    };
+
+    // Update fungsi untuk mendapatkan status berdasarkan step yang benar
+    const getStatusFromStep = (step: number): KendaraanData['status'] => {
+        const stepToStatus: Record<number, KendaraanData['status']> = {
+            1: 'bongkar-body',
+            2: 'repair-body', 
+            3: 'pengampelasan',
+            4: 'poxy',
+            5: 'repaint-clear',
+            6: 'pemasangan-body'
+        };
+        
+        return stepToStatus[Math.min(step, 6)] || 'bongkar-body';
+    };
+
+    // Update fungsi getStatusInfo untuk menerima step number
+    const getStatusInfo = (step: number) => {
         const statusMap = {
-            'bongkar-body': {
+            1: {
                 label: 'Bongkar Body',
                 step: 1,
-                description: 'Pembongkaran body dan persiapan untuk perbaikan',
+                description: 'Pembongkaran body dan inspeksi awal',
             },
-            'repair-body': {
+            2: {
                 label: 'Repair Body',
                 step: 2,
-                description: 'Perbaikan body yang rusak',
+                description: 'Perbaikan body dan restorasi',
             },
-            pengampelasan: {
+            3: {
                 label: 'Pengampelasan',
                 step: 3,
-                description: 'Pengampelasan permukaan (1 hari)',
+                description: 'Pengampelasan permukaan',
             },
-            poxy: {
+            4: {
                 label: 'Poxy',
                 step: 4,
-                description: 'Aplikasi lapisan dasar poxy (1 hari)',
+                description: 'Aplikasi lapisan dasar poxy',
             },
-            'repaint-clear': {
+            5: {
                 label: 'Repaint & Clear',
                 step: 5,
-                description: 'Pengecatan dan pelapisan pernis (1 hari)',
+                description: 'Pengecatan dan pelapisan pernis',
             },
-            'pemasangan-body': {
+            6: {
                 label: 'Pemasangan Body',
                 step: 6,
                 description: 'Pemasangan kembali body (Selesai)',
             },
         };
 
-        return statusMap[status];
-    };
-
-    // Mendapatkan status step saat ini
-    const getCurrentStep = (status: KendaraanData['status']) => {
-        return getStatusInfo(status).step;
+        return statusMap[step] || statusMap[1];
     };
 
     // Render icons based on step
@@ -186,7 +276,6 @@ export default function CekProgres() {
 
         const isCompleted = step < currentStep;
         const isActive = step === currentStep;
-        const isPending = step > currentStep;
 
         return (
             <div className={`rounded-full p-2 ${isCompleted ? 'bg-[#FF4433]' : isActive ? 'bg-[#FF4433] ring-4 ring-[#FF4433]/20' : 'bg-gray-300'}`}>
@@ -214,24 +303,57 @@ export default function CekProgres() {
         }).format(amount);
     };
 
-    // Tambahkan komponen ChevronProgressBar ini ke file CekProgres.tsx
-
-    // Ganti bagian progress bar dengan style chevron
-    const ChevronProgressBar = ({ currentStep }: { currentStep: number }) => {
+    // Update komponen ChevronProgressBar untuk menampilkan centang
+    const ChevronProgressBar = ({ currentStep, progressSteps }: { 
+        currentStep: number; 
+        progressSteps: KendaraanData['progressSteps'] 
+    }) => {
         const steps = [
-            { id: 1, label: 'Bongkar Body', color: '#C81E1E' }, // Merah
-            { id: 2, label: 'Repair Body', color: '#E9742B' },  // Oranye
-            { id: 3, label: 'Pengampelasan', color: '#A8A8A8' }, // Abu-abu
-            { id: 4, label: 'Poxy', color: '#236D8A' },         // Biru
-            { id: 5, label: 'Repaint', color: '#78AB46' },      // Hijau
-            { id: 6, label: 'Selesai', color: '#444444' }       // Abu-abu gelap
+            { id: 1, label: 'Bongkar Body', color: '#C81E1E' },
+            { id: 2, label: 'Repair Body', color: '#E9742B' },
+            { id: 3, label: 'Pengampelasan', color: '#A8A8A8' },
+            { id: 4, label: 'Poxy', color: '#236D8A' },
+            { id: 5, label: 'Repaint', color: '#78AB46' },
+            { id: 6, label: 'Selesai', color: '#444444' }
         ];
+
+        // Hitung step yang sudah completed berdasarkan progress steps
+        const getStepStatus = (stepId: number) => {
+            // Mapping step chevron ke kategori tasks
+            const stepToCategories: Record<number, string[]> = {
+                1: ['quality_check', 'bongkar_body'],
+                2: ['repair_body', 'other'],
+                3: ['pengampelasan'],
+                4: ['poxy', 'base_coat'],
+                5: ['color_coat', 'clear_coat'],
+                6: ['pemasangan_body']
+            };
+
+            const categories = stepToCategories[stepId] || [];
+            const relatedTasks = progressSteps.filter(task => 
+                categories.includes(task.kategori)
+            );
+
+            if (relatedTasks.length === 0) {
+                return stepId < currentStep ? 'completed' : 
+                       stepId === currentStep ? 'active' : 'pending';
+            }
+
+            const allCompleted = relatedTasks.every(task => task.status === 'completed');
+            const hasInProgress = relatedTasks.some(task => task.status === 'in_progress');
+
+            if (allCompleted) return 'completed';
+            if (hasInProgress || stepId === currentStep) return 'active';
+            return 'pending';
+        };
 
         return (
             <div className="w-full overflow-hidden pt-1 pb-5">
                 <div className="relative flex">
                     {steps.map((step, index) => {
-                        const isActive = step.id <= currentStep;
+                        const stepStatus = getStepStatus(step.id);
+                        const isActive = stepStatus === 'active';
+                        const isCompleted = stepStatus === 'completed';
                         const isLast = index === steps.length - 1;
 
                         return (
@@ -239,11 +361,10 @@ export default function CekProgres() {
                                 key={step.id}
                                 className="relative flex h-12 flex-1 items-center justify-center"
                                 style={{
-                                    backgroundColor: isActive ? step.color : '#d1d5db',
-                                    color: isActive ? 'white' : '#6b7280',
-                                    // Perbaikan pada clipPath untuk semua step termasuk step terakhir
+                                    backgroundColor: (isActive || isCompleted) ? step.color : '#d1d5db',
+                                    color: (isActive || isCompleted) ? 'white' : '#6b7280',
                                     clipPath: isLast
-                                        ? 'polygon(0 0, 100% 0%, 100% 100%, 0% 100%, 10% 50%)' // Menambahkan poin clipPath pada step terakhir
+                                        ? 'polygon(0 0, 100% 0%, 100% 100%, 0% 100%, 10% 50%)'
                                         : 'polygon(0 0, 90% 0%, 100% 50%, 90% 100%, 0% 100%, 10% 50%)',
                                     marginRight: isLast ? '0' : '-12px',
                                     zIndex: steps.length - index
@@ -251,7 +372,13 @@ export default function CekProgres() {
                             >
                                 <div className="flex items-center px-2 font-semibold">
                                     <span className="mr-2 flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-sm">
-                                        {step.id}
+                                        {isCompleted ? (
+                                            <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                            </svg>
+                                        ) : (
+                                            step.id
+                                        )}
                                     </span>
                                     <span className="hidden whitespace-nowrap sm:inline">{step.label}</span>
                                     <span className="sm:hidden">{step.label.split(' ')[0]}</span>
@@ -266,7 +393,9 @@ export default function CekProgres() {
 
     return (
         <>
-            <Head title="Cek Progres Pengerjaan" />
+            <Head title="Cek Progres Pengerjaan">
+                <meta name="csrf-token" content={document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''} />
+            </Head>
 
             <Header />
             <section className="relative bg-gradient-to-b from-gray-900 to-black py-16 md:py-24">
@@ -301,6 +430,7 @@ export default function CekProgres() {
                                             onChange={(e) => setPlatNomor(e.target.value)}
                                             placeholder="Contoh: B 1234 XYZ"
                                             className="flex-1 rounded-l-lg border border-gray-600 bg-gray-700 px-4 py-3 text-white focus:ring-2 focus:ring-[#FF4433] focus:outline-none"
+                                            disabled={isLoading}
                                         />
                                         <button
                                             type="submit"
@@ -336,7 +466,16 @@ export default function CekProgres() {
                                             )}
                                         </button>
                                     </div>
-                                    {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
+                                    {error && (
+                                        <div className="mt-3 p-3 bg-red-900/30 border border-red-500/50 rounded-lg">
+                                            <p className="text-sm text-red-300 flex items-center">
+                                                <svg className="mr-2 h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                                                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                                </svg>
+                                                {error}
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="text-sm text-gray-400">
@@ -348,53 +487,101 @@ export default function CekProgres() {
                         {/* Hasil pencarian */}
                         {isSubmitted && kendaraanData && (
                             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-                                {/* Progress bar steps - DIPERBARUI dengan style chevron */}
+                                {/* Progress bar steps */}
                                 <div className="mb-12">
-                                    <h2 className="mb-6 text-xl font-semibold text-white">
-                                        Status Pengerjaan: <span className="text-[#FF4433]">{getStatusInfo(kendaraanData.status).label}</span>
-                                    </h2>
+                                    {(() => {
+                                        const actualCurrentStep = getCurrentStep(kendaraanData);
+                                        const statusInfo = getStatusInfo(actualCurrentStep);
+                                        
+                                        return (
+                                            <>
+                                                <h2 className="mb-6 text-xl font-semibold text-white">
+                                                    Status Pengerjaan: <span className="text-[#FF4433]">{statusInfo.label}</span>
+                                                </h2>
 
-                                    <ChevronProgressBar currentStep={getCurrentStep(kendaraanData.status)} />
-
-                                    {/* Current status details - tetap sama seperti sebelumnya */}
-                                    <div className="mt-8 rounded-lg border border-[#FF4433]/20 bg-[#FF4433]/10 p-4">
-                                        <h3 className="flex items-center font-medium text-white">
-                                            <svg
-                                                xmlns="http://www.w3.org/2000/svg"
-                                                className="mr-2 h-5 w-5 text-[#FF4433]"
-                                                viewBox="0 0 20 20"
-                                                fill="currentColor"
-                                            >
-                                                <path
-                                                    fillRule="evenodd"
-                                                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                                                    clipRule="evenodd"
+                                                <ChevronProgressBar 
+                                                    currentStep={actualCurrentStep} 
+                                                    progressSteps={kendaraanData.progressSteps} 
                                                 />
-                                            </svg>
-                                            Detail Status Saat Ini
-                                        </h3>
-                                        <p className="mt-1 ml-7 text-gray-300">{kendaraanData.statusDetail}</p>
 
-                                        <div className="mt-3 ml-7 text-sm">
-                                            <div className="flex items-center text-gray-400">
-                                                <svg
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                    className="mr-1 h-4 w-4 text-[#FF4433]"
-                                                    viewBox="0 0 20 20"
-                                                    fill="currentColor"
-                                                >
-                                                    <path
-                                                        fillRule="evenodd"
-                                                        d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
-                                                        clipRule="evenodd"
-                                                    />
-                                                </svg>
-                                                Estimasi: {getStatusInfo(kendaraanData.status).description}
-                                            </div>
-                                        </div>
-                                    </div>
+                                                {/* Current status details */}
+                                                <div className="mt-8 rounded-lg border border-[#FF4433]/20 bg-[#FF4433]/10 p-4">
+                                                    <h3 className="flex items-center font-medium text-white">
+                                                        <svg
+                                                            xmlns="http://www.w3.org/2000/svg"
+                                                            className="mr-2 h-5 w-5 text-[#FF4433]"
+                                                            viewBox="0 0 20 20"
+                                                            fill="currentColor"
+                                                        >
+                                                            <path
+                                                                fillRule="evenodd"
+                                                                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                                                                clipRule="evenodd"
+                                                            />
+                                                        </svg>
+                                                        Detail Status Saat Ini
+                                                    </h3>
+                                                    <p className="mt-1 ml-7 text-gray-300">{kendaraanData.statusDetail}</p>
+
+                                                    <div className="mt-3 ml-7 text-sm">
+                                                        <div className="flex items-center text-gray-400">
+                                                            <svg
+                                                                xmlns="http://www.w3.org/2000/svg"
+                                                                className="mr-1 h-4 w-4 text-[#FF4433]"
+                                                                viewBox="0 0 20 20"
+                                                                fill="currentColor"
+                                                            >
+                                                                <path
+                                                                    fillRule="evenodd"
+                                                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
+                                                                    clipRule="evenodd"
+                                                                />
+                                                            </svg>
+                                                            Estimasi: {statusInfo.description}
+                                                        </div>
+                                                        
+                                                        {/* Progress steps detail */}
+                                                        <div className="mt-4 space-y-2">
+                                                            <h4 className="text-sm font-medium text-white">Detail Progress Tasks:</h4>
+                                                            <div className="grid gap-2 max-h-32 overflow-y-auto">
+                                                                {kendaraanData.progressSteps.slice(0, 5).map((step) => (
+                                                                    <div key={step.id} className="flex items-center justify-between text-xs bg-gray-800/30 rounded p-2">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <div 
+                                                                                className="w-2 h-2 rounded-full"
+                                                                                style={{ backgroundColor: step.warna }}
+                                                                            />
+                                                                            <span className="text-gray-300">{step.nama}</span>
+                                                                            {step.isCritical && (
+                                                                                <span className="text-red-400 text-xs">●</span>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className={`px-2 py-1 rounded text-xs ${
+                                                                                step.status === 'completed' ? 'bg-green-600 text-white' :
+                                                                                step.status === 'in_progress' ? 'bg-blue-600 text-white' :
+                                                                                'bg-gray-600 text-gray-300'
+                                                                            }`}>
+                                                                                {step.status === 'completed' ? 'Selesai' :
+                                                                                 step.status === 'in_progress' ? 'Progress' : 'Menunggu'}
+                                                                            </span>
+                                                                            <span className="text-gray-400">{step.progress}%</span>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                                {kendaraanData.progressSteps.length > 5 && (
+                                                                    <div className="text-xs text-gray-400 text-center">
+                                                                        +{kendaraanData.progressSteps.length - 5} tasks lainnya
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </>
+                                        );
+                                    })()}
                                 </div>
-
                                 {/* Data kendaraan */}
                                 <div className="mb-6 rounded-2xl border border-gray-700 bg-gradient-to-br from-gray-800/70 to-gray-900/70 p-6 shadow-xl backdrop-blur-sm sm:p-10">
                                     <h2 className="mb-6 flex items-center text-xl font-semibold text-white">

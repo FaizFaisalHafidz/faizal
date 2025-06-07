@@ -1,7 +1,7 @@
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head } from '@inertiajs/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     Bar,
     BarChart,
@@ -18,78 +18,68 @@ import {
     YAxis
 } from 'recharts';
 
+// Define interfaces for props
+interface DashboardStats {
+    total_revenue_current_month: number;
+    revenue_growth: number;
+    total_projects: number;
+    available_projects: number;
+    not_available_projects: number;
+    new_projects: number;
+    projects_growth: number;
+    today_schedule: number;
+}
+
+interface SalesData {
+    month: string;
+    amount: number;
+    target: number;
+}
+
+interface ProjectTypeData {
+    name: string;
+    value: number;
+    color: string;
+}
+
+interface ProjectStatusData {
+    name: string;
+    count: number;
+    color: string;
+}
+
+interface RecentProject {
+    id: string;
+    customer: string;
+    project: string;
+    amount: number;
+    date: string;
+    status: string;
+}
+
+interface TopProject {
+    name: string;
+    revenue: number;
+    customer: string;
+    status: string;
+    type: string;
+    progress: number;
+}
+
+interface Props {
+    stats: DashboardStats;
+    salesData: SalesData[];
+    projectTypeData: ProjectTypeData[];
+    projectStatusData: ProjectStatusData[];
+    recentProjects: RecentProject[];
+    topProjects: TopProject[];
+}
+
 const breadcrumbs: BreadcrumbItem[] = [
     {
         title: 'Dashboard',
         href: '/dashboard',
     },
-];
-
-// Data dummy untuk dashboard
-const salesData = [
-    { month: "Jan", amount: 2890, target: 3000 },
-    { month: "Feb", amount: 3100, target: 3000 },
-    { month: "Mar", amount: 3600, target: 3200 },
-    { month: "Apr", amount: 3200, target: 3200 },
-    { month: "Mei", amount: 3800, target: 3500 }
-];
-
-const vehicleTypeData = [
-    { name: "SUV", value: 23, color: "#3B82F6" },
-    { name: "MPV", value: 17, color: "#8B5CF6" },
-    { name: "Sedan", value: 14, color: "#EC4899" },
-    { name: "Pickup", value: 9, color: "#F97316" },
-    { name: "Sport", value: 5, color: "#10B981" },
-];
-
-const recentTransactions = [
-    { 
-        id: "TRX-001", 
-        customer: "Ahmad Fauzi", 
-        vehicle: "Toyota Fortuner 2023", 
-        amount: 450000000, 
-        date: "24 Mei 2025",
-        status: "completed" 
-    },
-    { 
-        id: "TRX-002", 
-        customer: "Siti Rahmah", 
-        vehicle: "Honda CR-V 2024", 
-        amount: 520000000, 
-        date: "23 Mei 2025",
-        status: "processing" 
-    },
-    { 
-        id: "TRX-003", 
-        customer: "Budi Santoso", 
-        vehicle: "Mitsubishi Xpander 2024", 
-        amount: 310000000, 
-        date: "21 Mei 2025",
-        status: "completed" 
-    },
-    { 
-        id: "TRX-004", 
-        customer: "Diana Putri", 
-        vehicle: "BMW X5 2022", 
-        amount: 980000000, 
-        date: "20 Mei 2025",
-        status: "completed" 
-    },
-    { 
-        id: "TRX-005", 
-        customer: "Hendro Wibowo", 
-        vehicle: "Toyota Camry 2024", 
-        amount: 670000000, 
-        date: "18 Mei 2025",
-        status: "pending" 
-    },
-];
-
-const vehicleStatus = [
-    { name: "Tersedia", count: 42, color: "bg-green-500" },
-    { name: "Dalam Perbaikan", count: 8, color: "bg-orange-500" },
-    { name: "Dalam Pemesanan", count: 12, color: "bg-blue-500" },
-    { name: "Terjual (Bulan Ini)", count: 15, color: "bg-purple-500" },
 ];
 
 const formatCurrency = (amount: number) => {
@@ -114,17 +104,48 @@ const getStatusBadge = (status: string) => {
     }
 };
 
-export default function Dashboard() {
+const getGrowthIndicator = (growth: number) => {
+    if (growth > 0) {
+        return <p className="mt-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">↑ {growth}% dari bulan lalu</p>;
+    } else if (growth < 0) {
+        return <p className="mt-2 text-xs font-medium text-red-600 dark:text-red-400">↓ {Math.abs(growth)}% dari bulan lalu</p>;
+    } else {
+        return <p className="mt-2 text-xs font-medium text-gray-600 dark:text-gray-400">= sama dengan bulan lalu</p>;
+    }
+};
+
+export default function Dashboard({ stats, salesData, projectTypeData, projectStatusData, recentProjects, topProjects }: Props) {
     const [activeTab, setActiveTab] = useState('transactions');
+    const [chartPeriod, setChartPeriod] = useState('month');
+    const [loadingChart, setLoadingChart] = useState(false);
+
+    // Load chart data when period changes
+    const loadChartData = async () => {
+        setLoadingChart(true);
+        try {
+            // You can implement dynamic chart loading here
+            // const response = await fetch(route('dashboard.chart-data', { period: chartPeriod }));
+            // const data = await response.json();
+            // Update chart data state
+        } catch (error) {
+            console.error('Error loading chart data:', error);
+        } finally {
+            setLoadingChart(false);
+        }
+    };
+
+    useEffect(() => {
+        // loadChartData();
+    }, [chartPeriod]);
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title="Dashboard - GARASI AMSTRONG" />
+            <Head title="Dashboard - Project Management System" />
             <div className="flex h-full flex-1 flex-col gap-4 p-4">
                 {/* Header */}
                 <div className="mb-2">
-                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Selamat Datang di GARASI AMSTRONG</h1>
-                    <p className="text-gray-600 dark:text-gray-400">Ringkasan bisnis dan performa penjualan Anda.</p>
+                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Dashboard Project Management</h1>
+                    <p className="text-gray-600 dark:text-gray-400">Ringkasan bisnis dan performa project Anda.</p>
                 </div>
 
                 {/* Stats Cards */}
@@ -132,8 +153,10 @@ export default function Dashboard() {
                     <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                         <div className="flex items-start justify-between">
                             <div>
-                                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Penjualan Bulan Ini</p>
-                                <h3 className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">{formatCurrency(3800000000)}</h3>
+                                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Revenue Bulan Ini</p>
+                                <h3 className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">
+                                    {formatCurrency(stats.total_revenue_current_month)}
+                                </h3>
                             </div>
                             <div className="rounded-full bg-indigo-100 p-2 dark:bg-indigo-900">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-indigo-600 dark:text-indigo-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -142,49 +165,50 @@ export default function Dashboard() {
                                 </svg>
                             </div>
                         </div>
-                        <p className="mt-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">↑ 12.5% dari bulan lalu</p>
+                        {getGrowthIndicator(stats.revenue_growth)}
                     </div>
                     
                     <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                         <div className="flex items-start justify-between">
                             <div>
-                                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Kendaraan</p>
-                                <h3 className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">77</h3>
+                                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Projects</p>
+                                <h3 className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">{stats.total_projects}</h3>
                             </div>
                             <div className="rounded-full bg-blue-100 p-2 dark:bg-blue-900">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-600 dark:text-blue-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"></path>
-                                    <circle cx="7" cy="17" r="2"></circle>
-                                    <circle cx="17" cy="17" r="2"></circle>
+                                    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+                                    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
                                 </svg>
                             </div>
                         </div>
-                        <p className="mt-2 text-xs font-medium text-gray-600 dark:text-gray-400">42 tersedia, 35 tidak tersedia</p>
+                        <p className="mt-2 text-xs font-medium text-gray-600 dark:text-gray-400">
+                            {stats.available_projects} tersedia, {stats.not_available_projects} tidak tersedia
+                        </p>
                     </div>
                     
                     <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                         <div className="flex items-start justify-between">
                             <div>
-                                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Pelanggan Baru</p>
-                                <h3 className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">24</h3>
+                                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Projects Baru</p>
+                                <h3 className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">{stats.new_projects}</h3>
                             </div>
                             <div className="rounded-full bg-amber-100 p-2 dark:bg-amber-900">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-amber-600 dark:text-amber-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
                                     <circle cx="9" cy="7" r="4"></circle>
-                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                                    <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
                                     <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
                                 </svg>
                             </div>
                         </div>
-                        <p className="mt-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">↑ 8.2% dari bulan lalu</p>
+                        {getGrowthIndicator(stats.projects_growth)}
                     </div>
                     
                     <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                         <div className="flex items-start justify-between">
                             <div>
-                                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Jadwal Hari Ini</p>
-                                <h3 className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">7</h3>
+                                <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Target Hari Ini</p>
+                                <h3 className="mt-1 text-xl font-semibold text-gray-900 dark:text-white">{stats.today_schedule}</h3>
                             </div>
                             <div className="rounded-full bg-emerald-100 p-2 dark:bg-emerald-900">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-emerald-600 dark:text-emerald-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -195,61 +219,80 @@ export default function Dashboard() {
                                 </svg>
                             </div>
                         </div>
-                        <p className="mt-2 text-xs font-medium text-gray-600 dark:text-gray-400">3 test drive, 4 showroom</p>
+                        <p className="mt-2 text-xs font-medium text-gray-600 dark:text-gray-400">
+                            Projects yang target selesai hari ini
+                        </p>
                     </div>
                 </div>
                 
-                {/* Charts Section - Recharts */}
+                {/* Charts Section */}
                 <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
                     <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Performa Penjualan (2025)</h3>
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Performa Revenue (2025)</h3>
+                            <select 
+                                value={chartPeriod} 
+                                onChange={(e) => setChartPeriod(e.target.value)}
+                                className="rounded-md border border-gray-300 px-2 py-1 text-sm"
+                            >
+                                <option value="week">Minggu</option>
+                                <option value="month">Bulan</option>
+                                <option value="quarter">Kuartal</option>
+                                <option value="year">Tahun</option>
+                            </select>
+                        </div>
                         <div className="mt-4 h-64">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <LineChart
-                                    data={salesData}
-                                    margin={{ top: 10, right: 30, left: 20, bottom: 5 }}
-                                >
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="month" />
-                                    <YAxis 
-                                        tickFormatter={(value) => `${value}M`}
-                                        domain={[2000, 4000]}
-                                    />
-                                    <Tooltip 
-                                        formatter={(value: any) => [`${formatCurrency(value * 1000000)}`, 'Nilai']}
-                                        labelFormatter={(label) => `Bulan: ${label}`}
-                                    />
-                                    <Legend />
-                                    <Line 
-                                        type="monotone" 
-                                        dataKey="amount" 
-                                        name="Penjualan" 
-                                        stroke="#4F46E5" 
-                                        strokeWidth={2} 
-                                        dot={{ r: 6 }}
-                                        activeDot={{ r: 8 }}
-                                    />
-                                    <Line 
-                                        type="monotone" 
-                                        dataKey="target" 
-                                        name="Target" 
-                                        stroke="#94A3B8" 
-                                        strokeDasharray="5 5"
-                                        strokeWidth={2} 
-                                        dot={{ r: 4 }}
-                                    />
-                                </LineChart>
-                            </ResponsiveContainer>
+                            {loadingChart ? (
+                                <div className="flex items-center justify-center h-full">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                                </div>
+                            ) : (
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart
+                                        data={salesData}
+                                        margin={{ top: 10, right: 30, left: 20, bottom: 5 }}
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="month" />
+                                        <YAxis 
+                                            tickFormatter={(value) => `${value}M`}
+                                        />
+                                        <Tooltip 
+                                            formatter={(value: any) => [`${formatCurrency(value * 1000000)}`, 'Nilai']}
+                                            labelFormatter={(label) => `Bulan: ${label}`}
+                                        />
+                                        <Legend />
+                                        <Line 
+                                            type="monotone" 
+                                            dataKey="amount" 
+                                            name="Actual Revenue" 
+                                            stroke="#4F46E5" 
+                                            strokeWidth={2} 
+                                            dot={{ r: 6 }}
+                                            activeDot={{ r: 8 }}
+                                        />
+                                        <Line 
+                                            type="monotone" 
+                                            dataKey="target" 
+                                            name="Estimated Revenue" 
+                                            stroke="#94A3B8" 
+                                            strokeDasharray="5 5"
+                                            strokeWidth={2} 
+                                            dot={{ r: 4 }}
+                                        />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            )}
                         </div>
                     </div>
                     
                     <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Distribusi Tipe Kendaraan</h3>
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Distribusi Jenis Project</h3>
                         <div className="mt-4 h-64">
                             <ResponsiveContainer width="100%" height="100%">
                                 <PieChart>
                                     <Pie
-                                        data={vehicleTypeData}
+                                        data={projectTypeData}
                                         cx="50%"
                                         cy="50%"
                                         labelLine={false}
@@ -259,11 +302,11 @@ export default function Dashboard() {
                                         nameKey="name"
                                         label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                                     >
-                                        {vehicleTypeData.map((entry, index) => (
+                                        {projectTypeData.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={entry.color} />
                                         ))}
                                     </Pie>
-                                    <Tooltip formatter={(value) => [`${value} unit`, 'Jumlah']} />
+                                    <Tooltip formatter={(value) => [`${value} project`, 'Jumlah']} />
                                     <Legend />
                                 </PieChart>
                             </ResponsiveContainer>
@@ -271,27 +314,28 @@ export default function Dashboard() {
                     </div>
                 </div>
                 
-                {/* Status Inventaris - Dengan Bar Chart */}
+                {/* Project Status Inventory */}
                 <div className="mt-4 rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Status Inventaris Kendaraan</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Status Projects</h3>
                     <div className="mt-4 h-64">
                         <ResponsiveContainer width="100%" height="100%">
                             <BarChart
-                                data={vehicleStatus}
+                                data={projectStatusData}
                                 margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
                             >
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="name" />
                                 <YAxis />
-                                <Tooltip formatter={(value) => [`${value} unit`, 'Jumlah']} />
-                                <Bar dataKey="count" name="Jumlah Kendaraan">
-                                    {vehicleStatus.map((entry, index) => (
+                                <Tooltip formatter={(value) => [`${value} project`, 'Jumlah']} />
+                                <Bar dataKey="count" name="Jumlah Projects">
+                                    {projectStatusData.map((entry, index) => (
                                         <Cell 
                                             key={`cell-${index}`} 
-                                            fill={entry.color.replace('bg-', '').includes('green') ? '#10B981' : 
-                                                  entry.color.replace('bg-', '').includes('orange') ? '#F97316' :
-                                                  entry.color.replace('bg-', '').includes('blue') ? '#3B82F6' :
-                                                  '#8B5CF6'} 
+                                            fill={entry.color.includes('gray') ? '#6B7280' : 
+                                                  entry.color.includes('blue') ? '#3B82F6' :
+                                                  entry.color.includes('orange') ? '#F97316' :
+                                                  entry.color.includes('green') ? '#10B981' :
+                                                  '#EF4444'} 
                                         />
                                     ))}
                                 </Bar>
@@ -312,7 +356,7 @@ export default function Dashboard() {
                                 }`}
                                 onClick={() => setActiveTab('transactions')}
                             >
-                                Transaksi Terbaru
+                                Projects Terbaru
                             </button>
                             <button
                                 className={`px-4 py-3 text-sm font-medium ${
@@ -322,7 +366,7 @@ export default function Dashboard() {
                                 }`}
                                 onClick={() => setActiveTab('topSelling')}
                             >
-                                Kendaraan Terlaris
+                                Top Revenue Projects
                             </button>
                         </nav>
                     </div>
@@ -334,16 +378,16 @@ export default function Dashboard() {
                                     <thead className="bg-gray-50 dark:bg-gray-800">
                                         <tr>
                                             <th scope="col" className="px-4 py-3.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                                                ID Transaksi
+                                                ID Project
                                             </th>
                                             <th scope="col" className="px-4 py-3.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                                                Pelanggan
+                                                Customer
                                             </th>
                                             <th scope="col" className="px-4 py-3.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                                                Kendaraan
+                                                Project
                                             </th>
                                             <th scope="col" className="px-4 py-3.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                                                Nominal
+                                                Nilai
                                             </th>
                                             <th scope="col" className="px-4 py-3.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                                                 Tanggal
@@ -354,25 +398,25 @@ export default function Dashboard() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-200 bg-white dark:divide-gray-700 dark:bg-gray-900">
-                                        {recentTransactions.map((transaction) => (
-                                            <tr key={transaction.id}>
+                                        {recentProjects.map((project) => (
+                                            <tr key={project.id}>
                                                 <td className="whitespace-nowrap px-4 py-4 text-sm font-medium text-gray-900 dark:text-white">
-                                                    {transaction.id}
+                                                    {project.id}
                                                 </td>
                                                 <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500 dark:text-gray-400">
-                                                    {transaction.customer}
+                                                    {project.customer}
                                                 </td>
                                                 <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500 dark:text-gray-400">
-                                                    {transaction.vehicle}
+                                                    {project.project}
                                                 </td>
                                                 <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500 dark:text-gray-400">
-                                                    {formatCurrency(transaction.amount)}
+                                                    {formatCurrency(project.amount)}
                                                 </td>
                                                 <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500 dark:text-gray-400">
-                                                    {transaction.date}
+                                                    {project.date}
                                                 </td>
                                                 <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-500 dark:text-gray-400">
-                                                    {getStatusBadge(transaction.status)}
+                                                    {getStatusBadge(project.status)}
                                                 </td>
                                             </tr>
                                         ))}
@@ -383,36 +427,30 @@ export default function Dashboard() {
                         
                         {activeTab === 'topSelling' && (
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-                                    <div className="aspect-video w-full overflow-hidden rounded-lg bg-gray-200 dark:bg-gray-700">
-                                        <div className="flex h-full items-center justify-center text-gray-500 dark:text-gray-400">
-                                            [Toyota Fortuner]
+                                {topProjects.map((project, index) => (
+                                    <div key={index} className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+                                        <div className="aspect-video w-full overflow-hidden rounded-lg bg-gray-200 dark:bg-gray-700">
+                                            <div className="flex h-full items-center justify-center text-gray-500 dark:text-gray-400">
+                                                <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                                </svg>
+                                            </div>
+                                        </div>
+                                        <h4 className="mt-3 font-medium text-gray-900 dark:text-white">{project.name}</h4>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400">Customer: {project.customer}</p>
+                                        <p className="text-sm text-gray-500 dark:text-gray-400">Progress: {project.progress}%</p>
+                                        <p className="text-sm font-medium text-indigo-600 dark:text-indigo-400">{formatCurrency(project.revenue)}</p>
+                                        <div className="mt-2">
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                                project.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                                project.status === 'in_progress' ? 'bg-blue-100 text-blue-800' :
+                                                'bg-gray-100 text-gray-800'
+                                            }`}>
+                                                {project.status.replace('_', ' ').toUpperCase()}
+                                            </span>
                                         </div>
                                     </div>
-                                    <h4 className="mt-3 font-medium text-gray-900 dark:text-white">Toyota Fortuner 2023</h4>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400">Terjual: 24 unit</p>
-                                    <p className="text-sm font-medium text-indigo-600 dark:text-indigo-400">Rp 450.000.000 - Rp 570.000.000</p>
-                                </div>
-                                <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-                                    <div className="aspect-video w-full overflow-hidden rounded-lg bg-gray-200 dark:bg-gray-700">
-                                        <div className="flex h-full items-center justify-center text-gray-500 dark:text-gray-400">
-                                            [Honda CR-V]
-                                        </div>
-                                    </div>
-                                    <h4 className="mt-3 font-medium text-gray-900 dark:text-white">Honda CR-V 2024</h4>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400">Terjual: 21 unit</p>
-                                    <p className="text-sm font-medium text-indigo-600 dark:text-indigo-400">Rp 520.000.000 - Rp 620.000.000</p>
-                                </div>
-                                <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-                                    <div className="aspect-video w-full overflow-hidden rounded-lg bg-gray-200 dark:bg-gray-700">
-                                        <div className="flex h-full items-center justify-center text-gray-500 dark:text-gray-400">
-                                            [Mitsubishi Xpander]
-                                        </div>
-                                    </div>
-                                    <h4 className="mt-3 font-medium text-gray-900 dark:text-white">Mitsubishi Xpander 2024</h4>
-                                    <p className="text-sm text-gray-500 dark:text-gray-400">Terjual: 18 unit</p>
-                                    <p className="text-sm font-medium text-indigo-600 dark:text-indigo-400">Rp 310.000.000 - Rp 370.000.000</p>
-                                </div>
+                                ))}
                             </div>
                         )}
                     </div>
