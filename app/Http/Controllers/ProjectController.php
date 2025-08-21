@@ -309,6 +309,8 @@ class ProjectController extends Controller
             'tanggal_target_selesai' => 'nullable|date',
             'prioritas' => 'nullable|string',
             'estimasi_biaya' => 'nullable|numeric|min:0',
+            'total_pembayaran' => 'nullable|numeric|min:0',
+            'status_pembayaran' => 'nullable|string',
             'catatan_khusus' => 'nullable|string',
         ]);
 
