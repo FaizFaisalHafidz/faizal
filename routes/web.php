@@ -66,6 +66,7 @@ Route::middleware(['auth', 'role:admin'])->group(function () {
                 Route::post('{task}/update-progress', [ProgressProjectController::class, 'updateProgress'])->name('update-progress');
                 Route::post('{task}/quality-check', [ProgressProjectController::class, 'qualityCheck'])->name('quality-check');
                 Route::post('{task}/upload-photo', [ProgressProjectController::class, 'uploadPhoto'])->name('upload-photo');
+                Route::post('{task}/toggle-critical', [ProgressProjectController::class, 'toggleCritical'])->name('toggle-critical');
 
                 // Bulk Actions
                 Route::post('bulk-update', [ProgressProjectController::class, 'bulkUpdate'])->name('bulk-update');

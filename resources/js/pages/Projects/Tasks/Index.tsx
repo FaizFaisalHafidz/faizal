@@ -1,6 +1,7 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
@@ -112,7 +113,18 @@ export default function TasksIndex({ project, tasks, kategoriOptions, statusOpti
     const [isStartTaskDialogOpen, setIsStartTaskDialogOpen] = useState(false);
     const [selectedTaskForAction, setSelectedTaskForAction] = useState<Task | null>(null);
 
-    const { data: createData, setData: setCreateData, post: postCreate, processing: processingCreate, reset: resetCreate } = useForm({
+    const { data: createData, setData: setCreateData, post: postCreate, processing: processingCreate, reset: resetCreate } = useForm<{
+        nama_task: string;
+        deskripsi_task: string;
+        kategori_task: string;
+        durasi_hari: number;
+        durasi_jam: number;
+        predecessor_tasks: number[];
+        pic_pengerjaan: string;
+        estimasi_biaya_task: number;
+        warna_display: string;
+        is_critical: boolean;
+    }>({
         nama_task: '',
         deskripsi_task: '',
         kategori_task: '',
@@ -122,9 +134,14 @@ export default function TasksIndex({ project, tasks, kategoriOptions, statusOpti
         pic_pengerjaan: '',
         estimasi_biaya_task: 0,
         warna_display: '#FF4433',
+        is_critical: false,
     });
 
-    const { data: actionData, setData: setActionData, post: postAction, processing: processingAction } = useForm({
+    const { data: actionData, setData: setActionData, post: postAction, processing: processingAction } = useForm<{
+        task_ids: number[];
+        action: string;
+        data: any;
+    }>({
         task_ids: [],
         action: '',
         data: {},
@@ -219,6 +236,7 @@ export default function TasksIndex({ project, tasks, kategoriOptions, statusOpti
     };
 
     const handleCreateTask = () => {
+        console.log('Creating task with data:', createData);
         postCreate(route('projects.tasks.store', project.id), {
             onSuccess: () => {
                 toast.success('Task berhasil dibuat');
@@ -253,6 +271,20 @@ export default function TasksIndex({ project, tasks, kategoriOptions, statusOpti
             },
             onError: () => {
                 toast.error('Gagal menyelesaikan task');
+            },
+        });
+    };
+
+    const handleToggleCritical = (task: Task) => {
+        router.post(route('projects.tasks.toggle-critical', [project.id, task.id]), {
+            is_critical: !task.is_critical
+        }, {
+            onSuccess: () => {
+                toast.success(`Task berhasil ${!task.is_critical ? 'ditandai sebagai' : 'dihapus dari'} critical path`);
+                router.reload({ only: ['tasks'] });
+            },
+            onError: () => {
+                toast.error('Gagal mengupdate status critical');
             },
         });
     };
@@ -311,8 +343,10 @@ export default function TasksIndex({ project, tasks, kategoriOptions, statusOpti
         }
     };
 
-    const TaskCard = ({ task }: { task: Task }) => (
-        <Card className={`transition-all duration-200 hover:shadow-md ${task.is_critical ? 'border-red-200 bg-red-50/30' : ''} ${selectedTasks.includes(task.id) ? 'ring-2 ring-blue-500' : ''}`}>
+    const TaskCard = ({ task }: { task: Task }) => {
+        console.log('TaskCard rendering for task:', task.id, 'is_critical:', task.is_critical, typeof task.is_critical);
+        return (
+            <Card className={`transition-all duration-200 hover:shadow-md ${task.is_critical ? 'border-red-200 bg-red-50/30' : ''} ${selectedTasks.includes(task.id) ? 'ring-2 ring-blue-500' : ''}`}>
             <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -376,6 +410,11 @@ export default function TasksIndex({ project, tasks, kategoriOptions, statusOpti
                                         Complete
                                     </DropdownMenuItem>
                                 )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => handleToggleCritical(task)}>
+                                    <Target className="mr-2 h-4 w-4" />
+                                    {task.is_critical ? 'Remove from Critical Path' : 'Mark as Critical'}
+                                </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem 
                                     onClick={() => handleDeleteTask(task)}
@@ -453,7 +492,8 @@ export default function TasksIndex({ project, tasks, kategoriOptions, statusOpti
                 )}
             </CardContent>
         </Card>
-    );
+        );
+    };
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -566,6 +606,17 @@ export default function TasksIndex({ project, tasks, kategoriOptions, statusOpti
                                             onChange={(e) => setCreateData('estimasi_biaya_task', parseFloat(e.target.value))}
                                             placeholder="0"
                                         />
+                                    </div>
+
+                                    <div className="flex items-center space-x-2">
+                                        <Checkbox
+                                            id="is_critical"
+                                            checked={createData.is_critical}
+                                            onCheckedChange={(checked) => setCreateData('is_critical', checked === true)}
+                                        />
+                                        <Label htmlFor="is_critical" className="text-sm font-medium">
+                                            Tandai sebagai Critical Path
+                                        </Label>
                                     </div>
                                 </div>
                                 <div className="flex justify-end gap-2">
@@ -760,9 +811,13 @@ export default function TasksIndex({ project, tasks, kategoriOptions, statusOpti
                 <div className="space-y-4">
                     {viewMode === 'list' && (
                         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                            {filteredTasks.map((task) => (
-                                <TaskCard key={task.id} task={task} />
-                            ))}
+                            {filteredTasks.map((task) => {
+                                console.log('Task data:', task);
+                                console.log('Task is_critical value:', task.is_critical);
+                                return (
+                                    <TaskCard key={task.id} task={task} />
+                                );
+                            })}
                         </div>
                     )}
 

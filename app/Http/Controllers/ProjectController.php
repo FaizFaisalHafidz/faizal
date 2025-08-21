@@ -160,8 +160,8 @@ class ProjectController extends Controller
 
         $project = DataProject::create($validated);
 
-        // Create default tasks based on project type
-        $this->createDefaultTasks($project);
+        // Commented out automatic task creation - let user create tasks manually
+        // $this->createDefaultTasks($project);
 
         return redirect()->route('projects.show', $project->id)
             ->with('success', 'Project berhasil dibuat');

@@ -59,6 +59,7 @@ class ProgressProjectController extends Controller
             'estimasi_biaya_task' => 'nullable|numeric|min:0',
             'warna_display' => 'nullable|string|size:7|regex:/^#[0-9A-F]{6}$/i',
             'urutan_tampil' => 'nullable|integer|min:0',
+            'is_critical' => 'nullable|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -71,6 +72,9 @@ class ProgressProjectController extends Controller
 
         try {
             DB::beginTransaction();
+
+            // Debug logging
+            error_log('Request data: ' . json_encode($request->all()));
 
             // Validate predecessor tasks belong to same project
             if ($request->has('predecessor_tasks') && !empty($request->predecessor_tasks)) {
@@ -97,7 +101,11 @@ class ProgressProjectController extends Controller
             $taskData['created_by'] = auth()->user()->name ?? 'System';
             $taskData['warna_display'] = $taskData['warna_display'] ?? '#FF4433';
 
+            error_log('Task data before create: ' . json_encode($taskData));
+
             $task = ProgressProject::create($taskData);
+
+            error_log('Created task: ' . json_encode($task->toArray()));
 
             // Update successor tasks if needed
             if ($request->has('predecessor_tasks') && !empty($request->predecessor_tasks)) {
@@ -182,6 +190,7 @@ class ProgressProjectController extends Controller
             'urutan_tampil' => 'nullable|integer|min:0',
             'tanggal_mulai_rencana' => 'nullable|date',
             'tanggal_selesai_rencana' => 'nullable|date|after_or_equal:tanggal_mulai_rencana',
+            'is_critical' => 'nullable|boolean',
         ]);
 
         if ($validator->fails()) {
@@ -636,6 +645,41 @@ class ProgressProjectController extends Controller
                 'success' => false,
                 'message' => 'Gagal mengupdate urutan: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Toggle manual critical status for a task
+     */
+    public function toggleCritical(Request $request, DataProject $project, ProgressProject $task)
+    {
+        if ($task->project_id !== $project->id) {
+            return response()->json(['success' => false, 'message' => 'Task not found'], 404);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'is_critical' => 'required|boolean',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            // Simply update the critical status
+            $task->is_critical = $request->is_critical;
+            $task->save();
+
+            // Don't recalculate CPM immediately to preserve manual setting
+            // CPM will be recalculated when other changes happen
+
+            return redirect()->back()->with('success', 'Status critical berhasil diupdate');
+
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Gagal mengupdate status critical: ' . $e->getMessage());
         }
     }
 

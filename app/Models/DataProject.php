@@ -283,7 +283,10 @@ class DataProject extends Model
             $task->total_float = $task->late_start - $task->early_start;
             
             // Mark as critical if total float is 0
-            $task->is_critical = ($task->total_float == 0);
+            // Note: Manual critical setting will be preserved by not recalculating CPM immediately after manual changes
+            if ($task->total_float == 0) {
+                $task->is_critical = true;
+            }
         }
 
         // Save all calculations
