@@ -120,6 +120,8 @@ Route::middleware(['auth', 'role:admin|owner'])->group(function () {
 
 // Public Routes
 Route::get('/daftar-harga', [DaftarHargaController::class, 'pubicData'])->name('daftar-harga.pubic-data');
+Route::get('/create-project', [ProjectController::class, 'createPublic'])->name('projects.create-public');
+Route::post('/create-project', [ProjectController::class, 'storePublic'])->name('projects.store-public');
 Route::get('cek-progress', [CekProgresController::class, 'index'])->name('cek-progress.index');
 
 // Public Progress Check Routes

@@ -498,4 +498,91 @@ class ProjectController extends Controller
 
         return $taskTemplates[$projectType] ?? $taskTemplates['custom_paint'];
     }
+
+    /**
+     * Show the form for creating a new project from public access
+     */
+    public function createPublic(Request $request): Response
+    {
+        // Get cart data from request if available
+        $cartData = null;
+        if ($request->has('cart')) {
+            $cartData = json_decode($request->get('cart'), true);
+        }
+
+        return Inertia::render('Public/ProjectForm', [
+            'jenisProjectOptions' => DataProject::JENIS_PROJECT,
+            'jenisKendaraanOptions' => DataProject::JENIS_KENDARAAN,
+            'prioritasOptions' => DataProject::PRIORITAS,
+            'statusPembayaranOptions' => DataProject::STATUS_PEMBAYARAN,
+            'cartData' => $cartData
+        ]);
+    }
+
+    /**
+     * Store a newly created project from public access
+     */
+    public function storePublic(Request $request)
+    {
+        $validated = $request->validate([
+            'nama_project' => 'required|string|max:255',
+            'deskripsi_project' => 'nullable|string',
+            'jenis_project' => 'required|string',
+            'plat_nomor' => 'required|string|max:20',
+            'nama_pemilik' => 'required|string|max:255',
+            'no_telp_pemilik' => 'required|string|max:20',
+            'email_pemilik' => 'nullable|email|max:255',
+            'alamat_pemilik' => 'nullable|string',
+            'jenis_kendaraan' => 'required|string',
+            'merk_kendaraan' => 'required|string|max:100',
+            'tipe_kendaraan' => 'required|string|max:100',
+            'tahun_kendaraan' => 'nullable|string|max:4',
+            'warna_awal' => 'nullable|string|max:100',
+            'warna_target' => 'nullable|string|max:100',
+            'tanggal_masuk' => 'required|date',
+            'tanggal_target_selesai' => 'required|date|after:tanggal_masuk',
+            'prioritas' => 'required|string',
+            'estimasi_biaya' => 'required|numeric|min:0',
+            'status_pembayaran' => 'required|string',
+            'catatan_khusus' => 'nullable|string',
+            'layanan_dipilih' => 'nullable|string', // JSON string of selected services
+            'foto_before' => 'nullable|array',
+            'foto_before.*' => 'image|mimes:jpeg,png,jpg,gif|max:2048',
+        ]);
+
+        // Generate project code
+        $validated['project_code'] = $this->generateProjectCode();
+        $validated['status_project'] = 'draft';
+        $validated['progress_percentage'] = 0;
+        $validated['created_by'] = 'Public Customer';
+        $validated['total_pembayaran'] = 0;
+
+        // Handle file uploads
+        if ($request->hasFile('foto_before')) {
+            $fotoBefore = [];
+            foreach ($request->file('foto_before') as $file) {
+                $path = $file->store('projects/before', 'public');
+                $fotoBefore[] = $path;
+            }
+            $validated['foto_before'] = $fotoBefore;
+        }
+
+        // Add selected services to description if available
+        if ($request->has('layanan_dipilih') && !empty($request->layanan_dipilih)) {
+            $layananDipilih = json_decode($request->layanan_dipilih, true);
+            if ($layananDipilih && is_array($layananDipilih)) {
+                $layananText = "\n\nLayanan yang dipilih:\n";
+                foreach ($layananDipilih as $layanan) {
+                    $layananText .= "- {$layanan['nama_paket']} ({$layanan['kategori']}) - Rp " . number_format($layanan['harga'], 0, ',', '.') . "\n";
+                }
+                $validated['deskripsi_project'] = ($validated['deskripsi_project'] ?? '') . $layananText;
+            }
+        }
+
+        $project = DataProject::create($validated);
+
+        return redirect()->route('progress.index')
+            ->with('success', 'Permintaan project berhasil dikirim! Silahkan simpan kode project ini: ' . $project->project_code)
+            ->with('project_code', $project->project_code);
+    }
 }
