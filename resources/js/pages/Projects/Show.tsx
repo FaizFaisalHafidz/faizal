@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/app-layout';
 import { BreadcrumbItem } from '@/types';
 import { Head, Link, router, useForm } from '@inertiajs/react';
@@ -22,7 +23,9 @@ import {
     Download,
     Edit,
     FileText,
+    HelpCircle,
     Image as ImageIcon,
+    Info,
     Mail,
     MapPin,
     PauseCircle,
@@ -31,6 +34,7 @@ import {
     Plus,
     RefreshCw,
     Settings,
+    Target,
     TrendingUp,
     User,
     ZoomIn
@@ -123,8 +127,39 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 export default function ShowProject({ project, tasks, criticalPath, projectStats }: Props) {
-    const [selectedImage, setSelectedImage] = useState<string | null>(null);
+    const [selectedStatus, setSelectedStatus] = useState(project.status_project);
     const [isStatusDialogOpen, setIsStatusDialogOpen] = useState(false);
+    const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+    // CPM Info Component with Tooltip
+    const CPMInfoTooltip = ({ children, task }: { children: React.ReactNode; task: Task }) => (
+        <TooltipProvider>
+            <Tooltip>
+                <TooltipTrigger asChild>
+                    {children}
+                </TooltipTrigger>
+                <TooltipContent className="max-w-sm p-4">
+                    <div className="space-y-2">
+                        <div className="font-semibold">Critical Path Method (CPM) Analysis</div>
+                        <div className="space-y-1 text-sm">
+                            <div><strong>Early Start (ES):</strong> Hari {task.early_start} - Waktu paling awal task dapat dimulai</div>
+                            <div><strong>Early Finish (EF):</strong> Hari {task.early_finish} - Waktu paling awal task dapat selesai</div>
+                            <div><strong>Late Start (LS):</strong> Hari {task.late_start} - Waktu paling akhir task dapat dimulai tanpa menunda project</div>
+                            <div><strong>Late Finish (LF):</strong> Hari {task.late_finish} - Waktu paling akhir task dapat selesai</div>
+                            <div><strong>Total Float:</strong> {task.total_float} hari - Waktu fleksibel (Slack Time)</div>
+                            <div className="pt-2 border-t">
+                                {task.is_critical ? (
+                                    <span className="text-red-600 font-medium">✓ Task ini ada di Critical Path (Float = 0)</span>
+                                ) : (
+                                    <span className="text-green-600">Task ini memiliki {task.total_float} hari fleksibilitas</span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </TooltipContent>
+            </Tooltip>
+        </TooltipProvider>
+    );
 
     const { data, setData, post, processing } = useForm({
         status: project.status_project,
@@ -599,7 +634,27 @@ export default function ShowProject({ project, tasks, criticalPath, projectStats
                     <TabsContent value="timeline" className="space-y-4">
                         <div className="flex items-center justify-between">
                             <div>
-                                <h3 className="text-lg font-semibold">Project Timeline</h3>
+                                <div className="flex items-center gap-2">
+                                    <h3 className="text-lg font-semibold">Project Timeline</h3>
+                                    <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                                            </TooltipTrigger>
+                                            <TooltipContent className="max-w-md p-4">
+                                                <div className="space-y-2">
+                                                    <div className="font-semibold">Critical Path Method (CPM)</div>
+                                                    <div className="text-sm space-y-1">
+                                                        <p>Timeline ini menggunakan metode Critical Path Method untuk menentukan jalur kritis project.</p>
+                                                        <p><strong>Critical Path:</strong> Rangkaian task terpanjang yang menentukan durasi minimum project.</p>
+                                                        <p><strong>Total Float:</strong> Waktu fleksibel yang tersedia tanpa menunda project.</p>
+                                                        <p className="text-red-600 font-medium">Task dengan badge "Critical" harus diprioritaskan!</p>
+                                                    </div>
+                                                </div>
+                                            </TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                </div>
                                 <p className="text-sm text-muted-foreground">
                                     Total durasi: {project.total_durasi_hari} hari • Critical tasks: {projectStats.critical_tasks}
                                 </p>
@@ -625,35 +680,63 @@ export default function ShowProject({ project, tasks, criticalPath, projectStats
                                                     />
                                                     
                                                     <div className="min-w-0 flex-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <h4 className="font-medium">{task.nama_task}</h4>
-                                                            {task.is_critical && (
-                                                                <Badge variant="destructive" className="text-xs">
-                                                                    Critical
-                                                                </Badge>
-                                                            )}
-                                                        </div>
-                                                        
-                                                        <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-                                                            <span>{task.kategori_task_label}</span>
-                                                            <span>•</span>
-                                                            <span>{task.durasi_hari} hari</span>
-                                                            <span>•</span>
-                                                            <span>ES: {task.early_start}, EF: {task.early_finish}</span>
-                                                            {task.total_float > 0 && (
-                                                                <>
+                                                        <CPMInfoTooltip task={task}>
+                                                            <div className="cursor-help">
+                                                                <div className="flex items-center gap-2">
+                                                                    <h4 className="font-medium">{task.nama_task}</h4>
+                                                                    <Info className="h-3 w-3 text-blue-500" />
+                                                                    {task.is_critical && (
+                                                                        <Badge variant="destructive" className="text-xs">
+                                                                            <Target className="h-3 w-3 mr-1" />
+                                                                            Critical
+                                                                        </Badge>
+                                                                    )}
+                                                                </div>
+                                                                
+                                                                <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
+                                                                    <span>{task.kategori_task_label}</span>
                                                                     <span>•</span>
-                                                                    <span>Float: {task.total_float}</span>
-                                                                </>
-                                                            )}
-                                                        </div>
+                                                                    <span>{task.durasi_hari} hari</span>
+                                                                    <span>•</span>
+                                                                    <span>ES: {task.early_start} → EF: {task.early_finish}</span>
+                                                                    <span>•</span>
+                                                                    <span className={task.total_float === 0 ? 'text-red-600 font-medium' : 'text-green-600'}>
+                                                                        Float: {task.total_float}
+                                                                    </span>
+                                                                </div>
 
-                                                        {task.pic_pengerjaan && (
-                                                            <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                                                                <User className="h-3 w-3" />
-                                                                <span>PIC: {task.pic_pengerjaan}</span>
+                                                                {/* Deadline Warning for Critical Tasks */}
+                                                                {task.is_critical && (
+                                                                    <div className="mt-2 text-xs text-red-600 bg-red-50 px-2 py-1 rounded">
+                                                                        ⚠️ Deadline: Hari {task.late_finish}
+                                                                        {project.tanggal_masuk && (
+                                                                            <span className="block">
+                                                                                ({new Date(new Date(project.tanggal_masuk).getTime() + task.late_finish * 24 * 60 * 60 * 1000).toLocaleDateString('id-ID', {day: '2-digit', month: 'short'})})
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Near Critical Warning */}
+                                                                {task.total_float > 0 && task.total_float <= 2 && (
+                                                                    <div className="mt-2 text-xs text-yellow-600 bg-yellow-50 px-2 py-1 rounded">
+                                                                        ⚡ Mulai sebelum Hari {task.late_start}
+                                                                        {project.tanggal_masuk && (
+                                                                            <span className="block">
+                                                                                ({new Date(new Date(project.tanggal_masuk).getTime() + task.late_start * 24 * 60 * 60 * 1000).toLocaleDateString('id-ID', {day: '2-digit', month: 'short'})})
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+
+                                                                {task.pic_pengerjaan && (
+                                                                    <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                                                                        <User className="h-3 w-3" />
+                                                                        <span>PIC: {task.pic_pengerjaan}</span>
+                                                                    </div>
+                                                                )}
                                                             </div>
-                                                        )}
+                                                        </CPMInfoTooltip>
                                                     </div>
                                                 </div>
 

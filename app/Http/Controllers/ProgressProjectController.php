@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\DataProject;
 use App\Models\ProgressProject;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -106,6 +107,11 @@ class ProgressProjectController extends Controller
             $task = ProgressProject::create($taskData);
 
             error_log('Created task: ' . json_encode($task->toArray()));
+
+            // Auto-set dependencies if not provided by user
+            if (empty($request->predecessor_tasks)) {
+                $this->autoSetTaskDependencies($task, $project);
+            }
 
             // Update successor tasks if needed
             if ($request->has('predecessor_tasks') && !empty($request->predecessor_tasks)) {
@@ -681,6 +687,140 @@ class ProgressProjectController extends Controller
         } catch (\Exception $e) {
             return redirect()->back()->with('error', 'Gagal mengupdate status critical: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Helper method to auto-set task dependencies based on logical workflow (PDM Network)
+     * Supports parallel activities and multiple predecessors like CPM algorithm
+     */
+    private function autoSetTaskDependencies(ProgressProject $task, DataProject $project): void
+    {
+        // Get logical dependencies based on CPM network rules
+        $dependencies = $this->getLogicalDependencies($task, $project);
+        
+        if (!empty($dependencies)) {
+            // Store old dependencies for cleanup
+            $oldDependencies = $task->predecessor_tasks ?? [];
+            
+            // Set new dependencies
+            $task->predecessor_tasks = $dependencies;
+            $task->save();
+            
+            // Update successor relationships
+            $this->updateSuccessorRelationships($oldDependencies, $dependencies, $task->id);
+            
+            // Log the dependency setting for debugging
+            Log::info("Auto-set dependencies for task: {$task->nama_task}", [
+                'task_id' => $task->id,
+                'old_dependencies' => $oldDependencies,
+                'new_dependencies' => $dependencies,
+                'dependency_names' => $this->getDependencyNames($dependencies, $project)
+            ]);
+        }
+    }
+    
+    /**
+     * Helper to get dependency names for logging
+     */
+    private function getDependencyNames(array $dependencyIds, DataProject $project): array
+    {
+        return $project->progressTasks()
+            ->whereIn('id', $dependencyIds)
+            ->pluck('nama_task', 'id')
+            ->toArray();
+    }
+
+    /**
+     * Get logical dependencies for a task based on paint workflow (PDM Network)
+     * Following CPM algorithm with proper parallel activities and multiple dependencies
+     */
+    private function getLogicalDependencies(ProgressProject $task, DataProject $project): array
+    {
+        $taskName = strtolower(trim($task->nama_task));
+        $allTasks = $project->progressTasks()->orderBy('urutan_tampil')->get();
+        
+        // Define logical workflow for paint project following PDM Network
+        // Based on the provided CPM structure with proper dependencies
+        $workflowRules = [
+            // A - Start node
+            'bongkar body' => [], 
+            
+            // B and C can run in parallel after A
+            'repair' => ['bongkar body'], 
+            'repair body' => ['bongkar body'], 
+            'pembersihan sasis' => ['bongkar body'], 
+            
+            // D depends on both B and C (merge point)
+            'pengampelasan' => ['repair', 'pembersihan sasis'], 
+            'pengampelasan' => ['repair body', 'pembersihan sasis'], 
+            
+            // E depends on D
+            'pembersihan body' => ['pengampelasan'], 
+            'pembersihan' => ['pengampelasan'], 
+            
+            // F depends on E
+            'aplikasi poxy' => ['pembersihan body', 'pembersihan'], 
+            'poxy' => ['pembersihan body', 'pembersihan'], 
+            'foxy' => ['pembersihan body', 'pembersihan'], 
+            
+            // G and H can run in parallel after F
+            'base coat' => ['aplikasi poxy', 'poxy', 'foxy'], 
+            'base' => ['aplikasi poxy', 'poxy', 'foxy'], 
+            'pencampuran cat' => ['aplikasi poxy', 'poxy', 'foxy'], 
+            
+            // I depends on both G and H (merge point)
+            'color coat' => ['base coat', 'pencampuran cat'], 
+            'color coat' => ['base', 'pencampuran cat'], 
+            'cat warna' => ['base coat', 'pencampuran cat'], 
+            'cat warna' => ['base', 'pencampuran cat'], 
+            
+            // J depends on I
+            'clear coat' => ['color coat', 'cat warna'], 
+            'clear' => ['color coat', 'cat warna'], 
+            
+            // K and L can start after J
+            'pemasangan body' => ['clear coat', 'clear'], 
+            'quality check' => ['clear coat', 'clear'], 
+            'cek kualitas' => ['clear coat', 'clear'], 
+            
+            // M depends on both K and L (final merge)
+            'final review' => ['pemasangan body', 'quality check'], 
+            'final review' => ['pemasangan body', 'cek kualitas'], 
+        ];
+
+        $dependencyTaskCodes = [];
+        
+        // Check for exact match first
+        if (isset($workflowRules[$taskName])) {
+            $requiredPredecessors = $workflowRules[$taskName];
+        } else {
+            // Check for partial matches (fuzzy matching)
+            $requiredPredecessors = [];
+            foreach ($workflowRules as $ruleName => $ruleDependencies) {
+                if (str_contains($taskName, $ruleName) || str_contains($ruleName, $taskName)) {
+                    $requiredPredecessors = $ruleDependencies;
+                    break;
+                }
+            }
+        }
+        
+        // Find actual task codes for the required predecessors
+        foreach ($requiredPredecessors as $predecessorName) {
+            $predecessorNameLower = strtolower(trim($predecessorName));
+            
+            foreach ($allTasks as $candidateTask) {
+                $candidateNameLower = strtolower(trim($candidateTask->nama_task));
+                
+                if ($candidateNameLower === $predecessorNameLower ||
+                    str_contains($candidateNameLower, $predecessorNameLower) ||
+                    str_contains($predecessorNameLower, $candidateNameLower)) {
+                    $dependencyTaskCodes[] = $candidateTask->task_code;
+                    break;
+                }
+            }
+        }
+
+        return array_unique($dependencyTaskCodes);
     }
 
     /**

@@ -10,6 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/app-layout';
 import { BreadcrumbItem } from '@/types';
 import { Head, Link, router, useForm } from '@inertiajs/react';
@@ -22,6 +23,8 @@ import {
     Clock,
     Clock1,
     Eye,
+    HelpCircle,
+    Info,
     Kanban,
     List,
     MoreHorizontal,
@@ -44,6 +47,8 @@ interface Project {
     nama_project: string;
     status_project: string;
     progress_percentage: number;
+    tanggal_masuk: string;
+    tanggal_target_selesai: string;
 }
 
 interface Task {
@@ -343,6 +348,49 @@ export default function TasksIndex({ project, tasks, kategoriOptions, statusOpti
         }
     };
 
+    // Helper function to format CPM day to actual date
+    const formatCPMDay = (day: number): string => {
+        if (!project.tanggal_masuk) return `Hari ${day}`;
+        const startDate = new Date(project.tanggal_masuk);
+        const targetDate = new Date(startDate);
+        targetDate.setDate(startDate.getDate() + day);
+        return `Hari ${day} (${targetDate.toLocaleDateString('id-ID', { 
+            day: '2-digit', 
+            month: 'short',
+            year: 'numeric'
+        })})`;
+    };
+
+    // CPM Info Component with Tooltip
+    const CPMInfoTooltip = ({ children, task }: { children: React.ReactNode; task: Task }) => (
+        <TooltipProvider>
+            <Tooltip>
+                <TooltipTrigger asChild>
+                    {children}
+                </TooltipTrigger>
+                <TooltipContent className="max-w-sm p-4">
+                    <div className="space-y-2">
+                        <div className="font-semibold">Critical Path Method (CPM) Analysis</div>
+                        <div className="space-y-1 text-sm">
+                            <div><strong>Early Start (ES):</strong> Hari {task.early_start} - Waktu paling awal task dapat dimulai</div>
+                            <div><strong>Early Finish (EF):</strong> Hari {task.early_finish} - Waktu paling awal task dapat selesai</div>
+                            <div><strong>Late Start (LS):</strong> Hari {task.late_start} - Waktu paling akhir task dapat dimulai tanpa menunda project</div>
+                            <div><strong>Late Finish (LF):</strong> Hari {task.late_finish} - Waktu paling akhir task dapat selesai</div>
+                            <div><strong>Total Float:</strong> {task.total_float} hari - Waktu fleksibel (Slack Time)</div>
+                            <div className="pt-2 border-t">
+                                {task.is_critical ? (
+                                    <span className="text-red-600 font-medium">✓ Task ini ada di Critical Path (Float = 0)</span>
+                                ) : (
+                                    <span className="text-green-600">Task ini memiliki {task.total_float} hari fleksibilitas</span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </TooltipContent>
+            </Tooltip>
+        </TooltipProvider>
+    );
+
     const TaskCard = ({ task }: { task: Task }) => {
         console.log('TaskCard rendering for task:', task.id, 'is_critical:', task.is_critical, typeof task.is_critical);
         return (
@@ -469,10 +517,92 @@ export default function TasksIndex({ project, tasks, kategoriOptions, statusOpti
                     </div>
                 )}
 
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>ES: {task.early_start} | EF: {task.early_finish}</span>
-                    {task.total_float > 0 && (
-                        <span>Float: {task.total_float}</span>
+                {/* CPM Analysis Section */}
+                <div className="bg-slate-50 p-3 rounded-lg space-y-2">
+                    <div className="flex items-center justify-between">
+                        <CPMInfoTooltip task={task}>
+                            <div className="flex items-center gap-2 cursor-help">
+                                <Info className="h-4 w-4 text-blue-500" />
+                                <span className="text-sm font-medium text-slate-700">CPM Analysis</span>
+                            </div>
+                        </CPMInfoTooltip>
+                        {task.is_critical && (
+                            <Badge variant="destructive" className="text-xs">
+                                <Zap className="h-3 w-3 mr-1" />
+                                Critical Path
+                            </Badge>
+                        )}
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="space-y-1">
+                            <div className="flex justify-between">
+                                <span className="text-muted-foreground">Early Start:</span>
+                                <span className="font-medium">Hari {task.early_start}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-muted-foreground">Early Finish:</span>
+                                <span className="font-medium">Hari {task.early_finish}</span>
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <div className="flex justify-between">
+                                <span className="text-muted-foreground">Late Start:</span>
+                                <span className="font-medium">Hari {task.late_start}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span className="text-muted-foreground">Late Finish:</span>
+                                <span className="font-medium">Hari {task.late_finish}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between pt-1 border-t border-slate-200">
+                        <span className="text-xs text-muted-foreground">Total Float (Slack):</span>
+                        <span className={`text-xs font-semibold ${task.total_float === 0 ? 'text-red-600' : 'text-green-600'}`}>
+                            {task.total_float} hari
+                        </span>
+                    </div>
+
+                    {/* Critical Path Warning */}
+                    {task.is_critical && (
+                        <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs">
+                            <div className="flex items-center gap-1 text-red-700 font-medium mb-1">
+                                <AlertTriangle className="h-3 w-3" />
+                                Deadline Critical
+                            </div>
+                            <div className="text-red-600">
+                                                                            <div className="text-red-600">
+                                                ⚠️ Harus selesai di <strong>{formatCPMDay(task.late_finish)}</strong> untuk tidak menunda project
+                                            </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Float Warning */}
+                    {task.total_float > 0 && task.total_float <= 2 && (
+                        <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                            <div className="flex items-center gap-1 text-yellow-700 font-medium mb-1">
+                                <Clock className="h-3 w-3" />
+                                Near Critical
+                            </div>
+                            <div className="text-yellow-600">
+                                ⚡ Hanya {task.total_float} hari fleksibilitas - mulai maksimal <strong>{formatCPMDay(task.late_start)}</strong>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Safe Task Info */}
+                    {task.total_float > 2 && (
+                        <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-xs">
+                            <div className="flex items-center gap-1 text-green-700 font-medium mb-1">
+                                <CheckCircle className="h-3 w-3" />
+                                Flexible Schedule
+                            </div>
+                            <div className="text-green-600">
+                                ✅ {task.total_float} hari fleksibilitas - dapat dimulai kapan saja sebelum <strong>{formatCPMDay(task.late_start)}</strong>
+                            </div>
+                        </div>
                     )}
                 </div>
 
@@ -632,6 +762,42 @@ export default function TasksIndex({ project, tasks, kategoriOptions, statusOpti
                     </div>
                 </div>
 
+                {/* Project Timeline Warning */}
+                <Card className="mb-4">
+                    <CardHeader className="pb-3">
+                        <CardTitle className="text-base flex items-center gap-2">
+                            <AlertTriangle className="h-5 w-5 text-red-500" />
+                            Project Timeline & Deadlines
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid gap-3 md:grid-cols-2">
+                            <div className="space-y-2">
+                                <div className="text-sm font-medium text-red-700">Critical Tasks (Must Complete On Time):</div>
+                                {tasks.filter(t => t.is_critical).map(task => (
+                                    <div key={task.id} className="text-xs bg-red-50 p-2 rounded border border-red-200">
+                                        <div className="font-medium">{task.nama_task}</div>
+                                        <div className="text-red-600">
+                                            📅 Deadline: {formatCPMDay(task.late_finish)} | Duration: {task.durasi_hari} hari
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="space-y-2">
+                                <div className="text-sm font-medium text-yellow-700">Near Critical Tasks (Limited Flexibility):</div>
+                                {tasks.filter(t => !t.is_critical && t.total_float <= 2 && t.total_float > 0).map(task => (
+                                    <div key={task.id} className="text-xs bg-yellow-50 p-2 rounded border border-yellow-200">
+                                        <div className="font-medium">{task.nama_task}</div>
+                                        <div className="text-yellow-600">
+                                            ⏰ Start by: {formatCPMDay(task.late_start)} | Float: {task.total_float} hari
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
                 {/* Statistics Cards */}
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     <Card>
@@ -662,11 +828,30 @@ export default function TasksIndex({ project, tasks, kategoriOptions, statusOpti
 
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <CardTitle className="text-sm font-medium">Critical Path</CardTitle>
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <CardTitle className="text-sm font-medium flex items-center gap-2 cursor-help">
+                                            Critical Path
+                                            <HelpCircle className="h-3 w-3 text-muted-foreground" />
+                                        </CardTitle>
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-sm p-4">
+                                        <div className="space-y-2">
+                                            <div className="font-semibold">Critical Path</div>
+                                            <div className="text-sm space-y-1">
+                                                <p>Rangkaian aktivitas terpanjang yang menentukan durasi minimum project.</p>
+                                                <p>Task di Critical Path memiliki Float = 0, artinya tidak bisa ditunda tanpa menunda keseluruhan project.</p>
+                                                <p className="text-red-600 font-medium">⚠️ Task critical harus diprioritaskan!</p>
+                                            </div>
+                                        </div>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
                             <Target className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{taskStats.critical}</div>
+                            <div className="text-2xl font-bold text-red-600">{taskStats.critical}</div>
                             <p className="text-xs text-muted-foreground">
                                 Critical tasks
                             </p>
@@ -862,12 +1047,17 @@ export default function TasksIndex({ project, tasks, kategoriOptions, statusOpti
                                                     className="w-3 h-3 rounded-full"
                                                     style={{ backgroundColor: task.warna_display }}
                                                 />
-                                                <div>
-                                                    <div className="font-medium">{task.nama_task}</div>
-                                                    <div className="text-sm text-muted-foreground">
-                                                        {task.durasi_hari} hari • ES: {task.early_start}
+                                                <CPMInfoTooltip task={task}>
+                                                    <div className="cursor-help">
+                                                        <div className="font-medium flex items-center gap-2">
+                                                            {task.nama_task}
+                                                            <Info className="h-3 w-3 text-blue-500" />
+                                                        </div>
+                                                        <div className="text-sm text-muted-foreground">
+                                                            {task.durasi_hari} hari • ES: {task.early_start} • EF: {task.early_finish} • Float: {task.total_float}
+                                                        </div>
                                                     </div>
-                                                </div>
+                                                </CPMInfoTooltip>
                                             </div>
                                             
                                             <div className="flex-1">
@@ -889,9 +1079,19 @@ export default function TasksIndex({ project, tasks, kategoriOptions, statusOpti
                                             
                                             <div className="flex items-center gap-2">
                                                 {task.is_critical && (
-                                                    <Badge variant="destructive" className="text-xs">
-                                                        Critical
-                                                    </Badge>
+                                                    <div className="flex items-center gap-1">
+                                                        <Badge variant="destructive" className="text-xs">
+                                                            Critical
+                                                        </Badge>
+                                                        <span className="text-xs text-red-600 bg-red-50 px-1 rounded">
+                                                            Deadline: {formatCPMDay(task.late_finish)}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                                {!task.is_critical && task.total_float <= 2 && task.total_float > 0 && (
+                                                    <span className="text-xs text-yellow-600 bg-yellow-50 px-1 rounded">
+                                                        Start by: {formatCPMDay(task.late_start)}
+                                                    </span>
                                                 )}
                                                 {getStatusBadge(task.status_task)}
                                             </div>

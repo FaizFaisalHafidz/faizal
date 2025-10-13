@@ -4,7 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 use Carbon\Carbon;
 
 class DataProject extends Model
@@ -224,6 +226,8 @@ class DataProject extends Model
 
     /**
      * Calculate Critical Path Method for project scheduling
+     * Following proper CPM algorithm with Forward Pass and Backward Pass
+     * Based on PDM (Precedence Diagramming Method) network
      */
     public function calculateCPM(): void
     {
@@ -232,6 +236,12 @@ class DataProject extends Model
         if ($tasks->isEmpty()) {
             return;
         }
+
+        // Auto-fix dependencies if they are missing
+        $this->autoFixTaskDependencies();
+
+        // Reload tasks after potential dependency fixes
+        $tasks = $this->progressTasks()->orderBy('urutan_tampil')->get();
 
         // Reset all calculations
         foreach ($tasks as $task) {
@@ -243,55 +253,346 @@ class DataProject extends Model
             $task->is_critical = false;
         }
 
-        // Forward pass - calculate Early Start and Early Finish
-        foreach ($tasks as $task) {
-            $maxEarlyFinish = 0;
+        // Create task lookup by task_code for easier dependency resolution
+        $tasksByCode = $tasks->keyBy('task_code');
+
+        // Step 1: FORWARD PASS - Calculate Early Start (ES) and Early Finish (EF)
+        // Process tasks in topological order (respecting dependencies)
+        $processed = [];
+        $iterations = 0;
+        $maxIterations = count($tasks) * 2; // Prevent infinite loops
+
+        while (count($processed) < count($tasks) && $iterations < $maxIterations) {
+            $progressMade = false;
             
-            if (!empty($task->predecessor_tasks)) {
-                foreach ($task->predecessor_tasks as $predecessorId) {
-                    $predecessor = $tasks->firstWhere('id', $predecessorId);
-                    if ($predecessor) {
-                        $maxEarlyFinish = max($maxEarlyFinish, $predecessor->early_finish);
+            foreach ($tasks as $task) {
+                if (in_array($task->task_code, $processed)) {
+                    continue; // Already processed
+                }
+                
+                // Check if all predecessors are processed
+                $canProcess = true;
+                $maxPredecessorFinish = 0;
+                
+                if (!empty($task->predecessor_tasks)) {
+                    foreach ($task->predecessor_tasks as $predecessorCode) {
+                        if (!in_array($predecessorCode, $processed)) {
+                            $canProcess = false;
+                            break;
+                        }
+                        
+                        if (isset($tasksByCode[$predecessorCode])) {
+                            $predecessor = $tasksByCode[$predecessorCode];
+                            $maxPredecessorFinish = max($maxPredecessorFinish, $predecessor->early_finish);
+                        }
                     }
+                }
+                
+                if ($canProcess) {
+                    // Calculate ES and EF for this task
+                    $task->early_start = $maxPredecessorFinish;
+                    $task->early_finish = $task->early_start + $task->durasi_hari;
+                    
+                    $processed[] = $task->task_code;
+                    $progressMade = true;
                 }
             }
             
-            $task->early_start = $maxEarlyFinish;
-            $task->early_finish = $task->early_start + $task->durasi_hari;
+            if (!$progressMade) {
+                // If no progress, there might be circular dependencies
+                // Process remaining tasks in order
+                foreach ($tasks as $task) {
+                    if (!in_array($task->task_code, $processed)) {
+                        $task->early_start = 0;
+                        $task->early_finish = $task->durasi_hari;
+                        $processed[] = $task->task_code;
+                    }
+                }
+                break;
+            }
+            
+            $iterations++;
         }
 
-        // Find project duration
+        // Find project duration (maximum EF)
         $projectDuration = $tasks->max('early_finish');
 
-        // Backward pass - calculate Late Start and Late Finish
-        foreach ($tasks->reverse() as $task) {
-            $minLateStart = $projectDuration;
+        // Step 2: BACKWARD PASS - Calculate Late Start (LS) and Late Finish (LF)
+        // Find end tasks (tasks with no successors)
+        $endTasks = [];
+        foreach ($tasks as $task) {
+            if (empty($task->successor_tasks)) {
+                $endTasks[] = $task;
+                $task->late_finish = $task->early_finish; // End tasks: LF = EF
+                $task->late_start = $task->late_finish - $task->durasi_hari;
+            }
+        }
+
+        // Process tasks in reverse topological order
+        $processed = [];
+        $iterations = 0;
+
+        // Mark end tasks as processed
+        foreach ($endTasks as $task) {
+            $processed[] = $task->task_code;
+        }
+
+        while (count($processed) < count($tasks) && $iterations < $maxIterations) {
+            $progressMade = false;
             
-            if (!empty($task->successor_tasks)) {
-                foreach ($task->successor_tasks as $successorId) {
-                    $successor = $tasks->firstWhere('id', $successorId);
-                    if ($successor) {
-                        $minLateStart = min($minLateStart, $successor->late_start);
+            foreach ($tasks->reverse() as $task) {
+                if (in_array($task->task_code, $processed)) {
+                    continue;
+                }
+                
+                // Check if all successors are processed
+                $canProcess = true;
+                $minSuccessorStart = PHP_INT_MAX;
+                
+                if (!empty($task->successor_tasks)) {
+                    foreach ($task->successor_tasks as $successorCode) {
+                        if (!in_array($successorCode, $processed)) {
+                            $canProcess = false;
+                            break;
+                        }
+                        
+                        if (isset($tasksByCode[$successorCode])) {
+                            $successor = $tasksByCode[$successorCode];
+                            $minSuccessorStart = min($minSuccessorStart, $successor->late_start);
+                        }
                     }
+                } else {
+                    // Tasks with no successors should already be processed
+                    $canProcess = false;
+                }
+                
+                if ($canProcess && $minSuccessorStart !== PHP_INT_MAX) {
+                    // Calculate LS and LF for this task
+                    $task->late_finish = $minSuccessorStart;
+                    $task->late_start = $task->late_finish - $task->durasi_hari;
+                    
+                    $processed[] = $task->task_code;
+                    $progressMade = true;
                 }
             }
             
-            $task->late_finish = $minLateStart;
-            $task->late_start = $task->late_finish - $task->durasi_hari;
+            if (!$progressMade) {
+                break;
+            }
             
-            // Calculate total float
+            $iterations++;
+        }
+
+        // Step 3: Calculate Total Float and identify Critical Path
+        foreach ($tasks as $task) {
+            // Total Float = LS - ES (or LF - EF, should be same)
             $task->total_float = $task->late_start - $task->early_start;
             
-            // Mark as critical if total float is 0
-            // Note: Manual critical setting will be preserved by not recalculating CPM immediately after manual changes
-            if ($task->total_float == 0) {
-                $task->is_critical = true;
-            }
+            // Critical tasks have zero float
+            $task->is_critical = ($task->total_float == 0);
         }
+
+        // Update project duration
+        $this->total_durasi_hari = $projectDuration;
 
         // Save all calculations
         foreach ($tasks as $task) {
             $task->saveQuietly(); // Use saveQuietly to avoid triggering events
+        }
+        
+        $this->save();
+        
+        // Log CPM calculation for debugging
+        Log::info("CPM Calculation completed for project: {$this->nama_project}", [
+            'project_id' => $this->id,
+            'total_duration' => $projectDuration,
+            'critical_tasks' => $tasks->where('is_critical', true)->pluck('nama_task')->toArray(),
+            'task_count' => $tasks->count()
+        ]);
+    }
+
+    /**
+     * Auto-fix task dependencies if they are missing
+     */
+    private function autoFixTaskDependencies(): void
+    {
+        $tasks = $this->progressTasks()->orderBy('urutan_tampil')->get();
+        
+        // Check if tasks have proper dependencies
+        $hasProperDependencies = false;
+        foreach ($tasks as $task) {
+            if (!empty($task->predecessor_tasks)) {
+                $hasProperDependencies = true;
+                break;
+            }
+        }
+
+        // If no dependencies exist, auto-create them based on workflow
+        if (!$hasProperDependencies) {
+            $this->createDefaultDependencies($tasks);
+        }
+    }
+
+    /**
+     * Create default dependencies based on paint workflow (PDM Network)
+     * Following the exact CPM structure provided with proper parallel activities
+     */
+    private function createDefaultDependencies($tasks): void
+    {
+        // CPM structure based on the provided table:
+        // A->B,C->D->E->F->G,H->I->J->K,L->M
+        $workflowRules = [
+            // A - Start node (no predecessors)
+            'bongkar body' => [],
+            
+            // B and C can run in parallel after A
+            'repair' => ['bongkar body'],
+            'repair body' => ['bongkar body'],
+            'pembersihan sasis' => ['bongkar body'],
+            
+            // D depends on both B and C (merge point)
+            'pengampelasan' => ['repair', 'pembersihan sasis'],
+            
+            // Alternative name mapping for D
+            'pengampelasan' => ['repair body', 'pembersihan sasis'],
+            
+            // E depends on D
+            'pembersihan body' => ['pengampelasan'],
+            'pembersihan' => ['pengampelasan'],
+            
+            // F depends on E
+            'aplikasi poxy' => ['pembersihan body'],
+            'poxy' => ['pembersihan body'],
+            'aplikasi poxy' => ['pembersihan'],
+            'poxy' => ['pembersihan'],
+            
+            // G and H can run in parallel after F
+            'base coat' => ['aplikasi poxy'],
+            'pencampuran cat' => ['aplikasi poxy'],
+            'base coat' => ['poxy'],
+            'pencampuran cat' => ['poxy'],
+            
+            // I depends on both G and H (merge point)
+            'color coat' => ['base coat', 'pencampuran cat'],
+            'cat warna' => ['base coat', 'pencampuran cat'],
+            
+            // J depends on I
+            'clear coat' => ['color coat'],
+            'clear coat' => ['cat warna'],
+            
+            // K and L can start after J (parallel activities)
+            'pemasangan body' => ['clear coat'],
+            'quality check' => ['clear coat'],
+            'cek kualitas' => ['clear coat'],
+            
+            // M depends on both K and L (final merge)
+            'final review' => ['pemasangan body', 'quality check'],
+            'final review' => ['pemasangan body', 'cek kualitas'],
+        ];
+
+        // Create task lookup by name for easier dependency resolution
+        $tasksByName = [];
+        foreach ($tasks as $task) {
+            $normalizedName = strtolower(trim($task->nama_task));
+            $tasksByName[$normalizedName] = $task;
+        }
+
+        // Reset all dependencies first
+        foreach ($tasks as $task) {
+            $task->predecessor_tasks = [];
+            $task->successor_tasks = [];
+        }
+
+        // Apply logical dependencies
+        foreach ($tasks as $task) {
+            $taskName = strtolower(trim($task->nama_task));
+            
+            // Find matching rule
+            $requiredPredecessors = null;
+            if (isset($workflowRules[$taskName])) {
+                $requiredPredecessors = $workflowRules[$taskName];
+            } else {
+                // Check for partial matches
+                foreach ($workflowRules as $ruleName => $ruleDependencies) {
+                    if (str_contains($taskName, $ruleName) || str_contains($ruleName, $taskName)) {
+                        $requiredPredecessors = $ruleDependencies;
+                        break;
+                    }
+                }
+            }
+            
+            if ($requiredPredecessors !== null) {
+                // Find actual task codes for the required predecessors
+                $predecessorCodes = [];
+                foreach ($requiredPredecessors as $predecessorName) {
+                    $predecessorNameLower = strtolower(trim($predecessorName));
+                    
+                    // Find matching task
+                    foreach ($tasksByName as $name => $candidateTask) {
+                        if ($name === $predecessorNameLower || 
+                            str_contains($name, $predecessorNameLower) ||
+                            str_contains($predecessorNameLower, $name)) {
+                            $predecessorCodes[] = $candidateTask->task_code;
+                            break;
+                        }
+                    }
+                }
+                
+                if (!empty($predecessorCodes)) {
+                    $task->predecessor_tasks = array_unique($predecessorCodes);
+                }
+            }
+        }
+
+        // Build successor relationships based on predecessor relationships
+        foreach ($tasks as $task) {
+            if (!empty($task->predecessor_tasks)) {
+                foreach ($task->predecessor_tasks as $predecessorCode) {
+                    $predecessor = $tasks->firstWhere('task_code', $predecessorCode);
+                    if ($predecessor) {
+                        $successors = $predecessor->successor_tasks ?? [];
+                        if (!in_array($task->task_code, $successors)) {
+                            $successors[] = $task->task_code;
+                            $predecessor->successor_tasks = $successors;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Save all dependency changes
+        foreach ($tasks as $task) {
+            $task->saveQuietly(); // Save without triggering events
+        }
+
+        Log::info("Created default dependencies for project: {$this->nama_project}", [
+            'project_id' => $this->id,
+            'tasks_with_dependencies' => $tasks->filter(function($task) {
+                return !empty($task->predecessor_tasks);
+            })->count(),
+            'total_tasks' => $tasks->count()
+        ]);
+    }
+
+    /**
+     * Update successor tasks for all tasks
+     */
+    private function updateAllSuccessorTasks($tasks): void
+    {
+        foreach ($tasks as $task) {
+            if (!empty($task->predecessor_tasks)) {
+                foreach ($task->predecessor_tasks as $predecessorId) {
+                    $predecessor = $tasks->firstWhere('id', $predecessorId);
+                    if ($predecessor) {
+                        $successors = $predecessor->successor_tasks ?? [];
+                        if (!in_array($task->id, $successors)) {
+                            $successors[] = $task->id;
+                            $predecessor->successor_tasks = $successors;
+                            $predecessor->saveQuietly();
+                        }
+                    }
+                }
+            }
         }
     }
 
